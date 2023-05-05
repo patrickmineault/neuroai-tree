@@ -1,0 +1,10 @@
+*.egg-info
+data/interim
+data/raw
+data/processed/potential_references.json
+scripts/retired
+src/__pycache__
+*.pyc
+*.pkl
+*.jsonl
+.vscode/settings.json
