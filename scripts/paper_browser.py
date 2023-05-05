@@ -5,7 +5,7 @@ from transformers import pipeline
 
 # Load your pandas file with the paper information
 def load_data():
-    df = pd.read_csv("../data/processed/neuroai-works.csv")
+    df = pd.read_csv("data/processed/neuroai-works.csv")
     df.sort_values("ss_cited_by_count", ascending=False, inplace=True)
     return df
 
@@ -13,13 +13,6 @@ def load_data():
 @st.cache_data()
 def get_data():
     return load_data()
-
-
-@st.cache_resource()
-def get_highlighter():
-    qa_model = pipeline("question-answering")
-    question = "What is biologically inspired by the brain, cortex, neuroscience or psychology, excluding deep neural networks?"
-    return qa_model, question
 
 
 categories = {
@@ -34,7 +27,6 @@ categories = {
 # Main app
 def main():
     df = get_data()
-    highlighter, question = get_highlighter()
 
     # Left sidebar
     with st.sidebar:
@@ -62,15 +54,7 @@ def main():
     st.write(f"Author List: {selected_paper['author_list']}")
     st.write(f"Journal: {selected_paper['journal']}")
     st.write(f"Link: {selected_paper['link']}")
-    abstract = selected_paper["abstract"]
-    highlight = highlighter(question, abstract)
-    abstract_highlighted = (
-        abstract[: highlight["start"]]
-        + " **"
-        + highlight["answer"]
-        + "** "
-        + abstract[highlight["end"] :]
-    )
+    abstract_highlighted = selected_paper["abstract_highlighted"]
     st.markdown(f"Abstract: {abstract_highlighted}")
 
 

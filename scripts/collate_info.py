@@ -2,6 +2,7 @@ import pickle
 
 import numpy as np
 import pandas as pd
+from transformers import pipeline
 
 
 def authorships_to_string(authorships):
@@ -9,6 +10,29 @@ def authorships_to_string(authorships):
     if len(names) > 5:
         return ", ".join(names[:5]) + ", et al."
     return ", ".join(names)
+
+
+def get_highlighter():
+    qa_model = pipeline("question-answering")
+    question = "What is biologically inspired by the brain, cortex, neuroscience or psychology, excluding deep neural networks?"
+    return qa_model, question
+
+
+def highlight_abstracts(df):
+    highlighter, question = get_highlighter()
+    highlighted = []
+    for abstract in df.abstract:
+        highlight = highlighter(question, abstract)
+        abstract_highlighted = (
+            abstract[: highlight["start"]]
+            + " **"
+            + highlight["answer"]
+            + "** "
+            + abstract[highlight["end"] :]
+        )
+        highlighted.append(abstract_highlighted)
+    df["abstract_highlighted"] = highlighted
+    return df
 
 
 def main():
@@ -41,6 +65,9 @@ def main():
     )
     df["link"] = df["primary_location"].map(lambda x: x["landing_page_url"])
     df = df[df["neuro_related"] == 1]
+
+    df = highlight_abstracts(df)
+
     df = df[
         [
             "id",
@@ -52,6 +79,7 @@ def main():
             "cited_by_count",
             "category",
             "abstract",
+            "abstract_highlighted",
             "ss_cited_by_count",
             "neuro_related",
         ]
@@ -62,5 +90,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
     main()
