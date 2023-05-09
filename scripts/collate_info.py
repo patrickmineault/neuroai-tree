@@ -1,5 +1,3 @@
-import pickle
-
 import numpy as np
 import pandas as pd
 from transformers import pipeline
@@ -13,43 +11,52 @@ def authorships_to_string(authorships):
 
 
 def get_highlighter():
-    qa_model = pipeline("question-answering")
-    question = "What is biologically inspired by the brain, cortex, neuroscience or psychology, excluding deep neural networks?"
-    return qa_model, question
+    qa_model = pipeline(
+        "question-answering",
+        model="distilbert-base-cased-distilled-squad",
+        revision="626af31",
+    )
+    question = (
+        """What is biologically inspired by the brain, cortex, neuroscience or """
+        """psychology, excluding deep or convolutional neural networks?"""
+    )
+    return qa_model, question.strip()
 
 
 def highlight_abstracts(df):
     highlighter, question = get_highlighter()
     highlighted = []
     for abstract in df.abstract:
-        highlight = highlighter(question, abstract)
-        abstract_highlighted = (
-            abstract[: highlight["start"]]
-            + " **"
-            + highlight["answer"]
-            + "** "
-            + abstract[highlight["end"] :]
-        )
-        highlighted.append(abstract_highlighted)
+        try:
+            highlight = highlighter(question, abstract)
+            abstract_highlighted = (
+                abstract[: highlight["start"]]
+                + " **"
+                + highlight["answer"]
+                + "** "
+                + abstract[highlight["end"] :]
+            )
+            highlighted.append(abstract_highlighted)
+        except ValueError:
+            # No answer found.
+            highlighted.append(abstract)
     df["abstract_highlighted"] = highlighted
     return df
 
 
+def get_journal_name(x):
+    if (
+        "source" in x
+        and x["source"] is not None
+        and "display_name" in x["source"]
+    ):
+        return x["source"]["display_name"]
+    return ""
+
+
 def main():
     df = pd.read_json("data/processed/works.jsonl", lines=True)
-
-    with open("data/processed/features.pkl", "rb") as f:
-        features = pickle.load(f)
-
-    df["neuro_related"] = np.where(features.sum(axis=1) >= 1, 1, 0)
-
-    with open("data/processed/categories.pkl", "rb") as f:
-        outputs = pickle.load(f)
-
-    category = np.zeros(df.shape[0], dtype=object)
-    category[df["neuro_related"].values == 1] = outputs
-
-    df["category"] = category
+    df = df.rename(columns={"source": "origin"})
 
     df_ss = pd.read_json("data/processed/semantic_scholar.jsonl", lines=True)
     df_ss["ss_cited_by_count"] = df_ss["result"].map(
@@ -60,11 +67,44 @@ def main():
     # Do a left join on the paper ID
     df = df.merge(df_ss, left_on="id", right_on="id", how="left")
     df["author_list"] = df.authorships.map(authorships_to_string)
-    df["journal"] = df.primary_location.map(
-        lambda x: x["source"]["display_name"]
-    )
+    df["journal"] = df.primary_location.map(lambda x: get_journal_name(x))
     df["link"] = df["primary_location"].map(lambda x: x["landing_page_url"])
-    df = df[df["neuro_related"] == 1]
+
+    # Get the classification from OpenAI
+    df_class = pd.read_json(
+        "data/processed/coarse_classification.jsonl", lines=True
+    )
+    df = df.merge(df_class, on="id")
+
+    # Get the coarse classification from the keyword-based detection.
+    df_class = pd.read_json("data/processed/categories.jsonl", lines=True)
+    df = df.merge(df_class, on="id")
+
+    df = df[~df["openai_category"].isna()]
+    cites = (df["oa_neuro_citations"].values >= 2) | (
+        df["ss_neuro_citations"].values >= 2
+    )
+    keywords = df["keywords_found"].values >= 1
+    manual = df["origin"] == "manual"
+    df["reason"] = np.where(
+        cites & keywords,
+        "Matched 1+ abstract keywords & cited 2+ neuro papers",
+        np.where(
+            keywords,
+            "Matched 1+ abstract keywords",
+            np.where(
+                cites,
+                "Cited 2+ neuro papers",
+                np.where(
+                    manual,
+                    "Manually added",
+                    "Other",
+                ),
+            ),
+        ),
+    )
+
+    assert df.shape[0] < 10000, "Too many papers!"
 
     df = highlight_abstracts(df)
 
@@ -77,13 +117,17 @@ def main():
             "link",
             "author_list",
             "cited_by_count",
-            "category",
+            "openai_category",
             "abstract",
             "abstract_highlighted",
             "ss_cited_by_count",
-            "neuro_related",
+            "oa_cited_journals",
+            "ss_cited_journals",
+            "reason",
         ]
     ]
+
+    df = df[~df.id.duplicated()]
 
     # Save the final dataframe
     df.to_csv("data/processed/neuroai-works.csv", index=False)

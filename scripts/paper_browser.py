@@ -1,6 +1,6 @@
+import numpy as np
 import pandas as pd
 import streamlit as st
-from transformers import pipeline
 
 
 # Load your pandas file with the paper information
@@ -24,6 +24,12 @@ categories = {
 }
 
 
+def protected_round(x):
+    if isinstance(x, float) and not np.isnan(x):
+        return round(x)
+    return x
+
+
 # Main app
 def main():
     df = get_data()
@@ -31,31 +37,52 @@ def main():
     # Left sidebar
     with st.sidebar:
         st.header("NeuroAI paper browser")
+
         category = st.selectbox(
             "Category",
             ["A", "C", "B", "D", "E"],
             format_func=lambda x: categories[x],
         )
-        paper_titles = df.loc[df.category == category, "title"].tolist()
+        text_filter = st.text_input("Text search")
+
+        if text_filter:
+            df_ = df[
+                df.title.str.contains(text_filter, case=False)
+                | df.author_list.str.contains(text_filter, case=False)
+                | df.abstract.str.contains(text_filter, case=False)
+            ]
+        else:
+            df_ = df.copy()
+
+        n_papers = df_.loc[df.openai_category == category].shape[0]
         selected_paper_index = st.number_input(
-            f"Choose a paper (0-{len(paper_titles)-1}):",
+            f"Choose a paper (0-{n_papers-1}):",
             min_value=0,
-            max_value=len(paper_titles) - 1,
+            max_value=n_papers - 1,
         )
 
     # Right side: Display paper information
-    selected_paper = df[df.category == category].iloc[selected_paper_index]
+    selected_paper = df_[df_.openai_category == category].iloc[
+        selected_paper_index
+    ]
 
     st.markdown(f"# {selected_paper['title']}")  # Paper title as an h1
     st.write(
-        f"Number of Citations: {int(selected_paper['ss_cited_by_count'])}"
+        f"Number of Citations: {protected_round(selected_paper['ss_cited_by_count'])}"
     )
+    st.write(f"Included because: {selected_paper['reason']}")
     st.write(f"Publication Year: {selected_paper['publication_year']}")
     st.write(f"Author List: {selected_paper['author_list']}")
     st.write(f"Journal: {selected_paper['journal']}")
     st.write(f"Link: {selected_paper['link']}")
     abstract_highlighted = selected_paper["abstract_highlighted"]
     st.markdown(f"Abstract: {abstract_highlighted}")
+    st.write(
+        f"Neuro journals cited (OpenAlex): {selected_paper['oa_cited_journals']}"
+    )
+    st.write(
+        f"Neuro journals cited (Semantic Scholar): {selected_paper['ss_cited_journals']}"
+    )
 
 
 if __name__ == "__main__":

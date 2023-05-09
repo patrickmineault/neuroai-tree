@@ -90,7 +90,7 @@ def run_requests_parallel(
 
     clean_outputs = []
     for o in outputs:
-        if not isinstance(o[1], list):
+        if not isinstance(o[1], list):  # This was an error.
             clean_outputs.append(o)
 
     outputs = clean_outputs
@@ -105,16 +105,22 @@ def run_requests_parallel(
         else:
             output_map[json.dumps(o[0])] = o[1]["choices"][0]["text"]
 
-    output_list = [output_map[x] for x in keys_all]
+    output_dict = [
+        {"id": x, "openai_content": output_map[x]} for x in keys_all
+    ]
 
     outputs = []
-    for content in output_list:
-        for j in "ABCDEF":
-            if content.startswith(j):
-                outputs.append(j)
-                break
-            if j == "F":
-                outputs.append("F")
+    for element in output_dict:
+        answer = element["openai_content"][0]
+        if answer not in "ABCDEF":
+            answer = "F"
+        outputs.append(
+            {
+                "id": element["id"],
+                "openai_content": element["openai_content"],
+                "openai_category": answer,
+            }
+        )
     return outputs
 
 
@@ -150,15 +156,15 @@ def main():
     model_type = "chat"
 
     df = pd.read_json("data/processed/works.jsonl", lines=True)
+    df_features = pd.read_json(
+        "data/processed/coarse_classification.jsonl", lines=True
+    )
+    df = df.merge(df_features, on="id")
 
-    with open("data/processed/features.pkl", "rb") as f:
-        features = pickle.load(f)
+    assert (df.qualified.sum() > 1500) and (df.qualified.sum() < 3000)
 
-    df["neuro_related"] = np.where(features.sum(axis=1) >= 1, 1, 0)
-
-    print(df[df["neuro_related"] == 1].shape)
-
-    requests = gather_requests(df[df["neuro_related"] == 1], model, model_type)
+    # Test drive
+    requests = gather_requests(df[df.qualified], model, model_type)
     input_file = "data/interim/prompts-input.jsonl"
 
     outputs = run_requests_parallel(
@@ -168,8 +174,13 @@ def main():
         model_type,
     )
 
-    with open("data/processed/categories.pkl", "wb") as f:
-        pickle.dump(outputs, f)
+    df.loc[df.qualified, "openai_category"] = [
+        x["openai_category"] for x in outputs
+    ]
+
+    df[["id", "openai_category"]].to_json(
+        "data/processed/categories.jsonl", orient="records", lines=True
+    )
 
 
 if __name__ == "__main__":

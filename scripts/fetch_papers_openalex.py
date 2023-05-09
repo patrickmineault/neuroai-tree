@@ -1,4 +1,5 @@
 import json
+import shutil
 
 import pandas as pd
 import pyalex
@@ -30,12 +31,42 @@ def protect(name):
 
 
 # Function to fetch abstracts for authors with given ORCID IDs
-def fetch_abstracts(openalex_ids):
-    abstract_data = []
+def fetch_abstracts_by_title(titles):
+    encountered = set()
 
-    with open("data/processed/works.jsonl", "w") as f:
-        f.write("")
+    for title in tqdm.tqdm(titles):
+        works = (
+            Works()
+            .filter(
+                title={"search": title.replace(",", " ").replace("&", "and")}
+            )
+            .get()
+        )
 
+        if not works:
+            continue
+
+        work = works[0]
+        if work["id"] in encountered:
+            continue
+        if work.get("abstract_inverted_index"):
+            abstract = work["abstract"]
+        else:
+            abstract = None
+
+        encountered.add(work["id"])
+
+        with open("data/interim/works.jsonl", "a") as f:
+            row_processed = dict(work)
+            del row_processed["abstract_inverted_index"]
+            row_processed["abstract"] = abstract
+            row_processed["source"] = "manual"
+            json.dump(row_processed, f)
+            f.write("\n")
+    return encountered
+
+
+def fetch_abstracts_by_conference(openalex_ids, encountered):
     for openalex_id in tqdm.tqdm(openalex_ids):
         source = Sources()[openalex_id]
         pages = (
@@ -46,50 +77,39 @@ def fetch_abstracts(openalex_ids):
 
         for page in pages:
             for work in page:
+                if work["id"] in encountered:
+                    continue
+
                 if work.get("abstract_inverted_index"):
                     abstract = work["abstract"]
                 else:
                     abstract = None
 
-                publication_name = None
-                if work["primary_location"]:
-                    if work["primary_location"]["source"]:
-                        publication_name = work["primary_location"]["source"][
-                            "display_name"
-                        ]
+                encountered.add(work["id"])
 
-                row = {
-                    "source": source["display_name"],
-                    "authors": ", ".join(
-                        [
-                            protect(a["author"]["display_name"])
-                            for a in work["authorships"]
-                        ]
-                    ),
-                    "date": work["publication_date"],
-                    "title": work["title"],
-                    "publication_name": publication_name,
-                    "total_citations": work["cited_by_count"],
-                    "abstract": abstract,
-                }
-                abstract_data.append(row)
-
-                with open("data/processed/works.jsonl", "a") as f:
+                with open("data/interim/works.jsonl", "a") as f:
                     row_processed = dict(work)
                     del row_processed["abstract_inverted_index"]
                     row_processed["abstract"] = abstract
+                    row_processed["source"] = "conference-list"
                     json.dump(row_processed, f)
                     f.write("\n")
-
-    return abstract_data
+    return encountered
 
 
 if __name__ == "__main__":
     # Fetch the abstracts
-    abstracts = fetch_abstracts(openalex_ids)
+    # Clear the file
+    with open("data/interim/works.jsonl", "w") as f:
+        f.write("")
 
-    # Create a DataFrame and save it as a CSV file
-    df = pd.DataFrame(abstracts)
-    df.to_csv("data/raw/abstracts.csv", index=False)
+    df_manual = pd.read_csv("data/raw/manual-references.csv")
 
-    print("Abstracts saved to abstracts.csv")
+    encountered = fetch_abstracts_by_title(df_manual.Title.values.tolist())
+    print(f"Fetched {len(encountered)} abstracts from manual references")
+    encountered = fetch_abstracts_by_conference(openalex_ids, encountered)
+
+    print(f"{len(encountered)} abstracts saved to data/processed/works.jsonl")
+
+    # Copy the works.jsonl file to the processed folder atomically.
+    shutil.copy("data/interim/works.jsonl", "data/processed/works.jsonl")
