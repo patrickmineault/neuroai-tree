@@ -1,9 +1,11 @@
 import json
 import pickle
 
+import Levenshtein
 import pandas as pd
 import semanticscholar
 import tqdm
+from collections_extended import bag
 from semanticscholar import SemanticScholar
 
 
@@ -55,9 +57,12 @@ def fetch_semantic_scholar_by_ids(ids):
                 except (
                     semanticscholar.SemanticScholarException.BadQueryParametersException
                 ):
-                    continue
+                    all_results.append(None)
             print(n_success)
 
+    assert len(all_results) == len(
+        ids
+    ), f"Length mismatch, {len(all_results)} != {len(ids)}"
     return [
         {"id": k, "result": dict(r)}
         for k, r in zip(list(ids.keys()), all_results)
@@ -66,9 +71,16 @@ def fetch_semantic_scholar_by_ids(ids):
 
 def fetch_semantic_scholar_by_title(title):
     sch = SemanticScholar()
+    title = title.replace("-", " ").replace("\n", " ")
+    if ":" in title:
+        title_l, title_r = title.split(":")
+        if len(title_l) > len(title_r) // 2:
+            title = title_l
+        elif len(title_r) > len(title_l) // 2:
+            title = title_r
     try:
         results = sch.search_paper(
-            title.replace("-", " "),
+            title,
             fields=["title", "venue"],
             limit=5,
         )
@@ -77,13 +89,26 @@ def fetch_semantic_scholar_by_title(title):
 
     n = 0
     for result in results:
-        if result.venue is not None:
+        rtitle = result.title
+        distance = Levenshtein.distance(rtitle.lower(), title.lower())
+        if result.venue is not None and distance < 5:
             return result["paperId"]
+        else:
+            # Use a bag instead.
+            bag_query = bag(title.lower())
+            bag_result = bag(rtitle.lower())
+
+            if len(bag_query & bag_result) > 0.95 * min(
+                len(bag_query), len(bag_result)
+            ):
+                return result["paperId"]
+
         n += 1
         if n > 5:
             break
 
-    raise Exception(f"Could not find paper with title {title}")
+    print("No match found for", title)
+    return None
 
 
 def resolve_semantic_scholar_ids(df):
@@ -97,12 +122,14 @@ def resolve_semantic_scholar_ids(df):
     for i, row in tqdm.tqdm(
         df.iterrows(), total=len(df), desc="Resolving Semantic Scholar IDs"
     ):
-        if row["id"] in paper_ids:
+        if row["id"] in paper_ids and row["id"] is not None:
             continue
 
         # Resolve Semantic Scholar ID by title
         try:
-            paper_id = fetch_semantic_scholar_by_title(row["title"])
+            paper_id = fetch_semantic_scholar_by_title(
+                row["title"].replace("\n", " ")
+            )
             paper_ids[row["id"]] = paper_id
         except Exception as e:
             paper_ids[row["id"]] = None

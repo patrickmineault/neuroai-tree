@@ -54,7 +54,14 @@ def main():
         else:
             df_ = df.copy()
 
-        n_papers = df_.loc[df.openai_category == category].shape[0]
+        year_range = st.slider(
+            "Publication year range", 1980, 2023, (1980, 2023), 1
+        )
+
+        df_ = df_[df_.publication_year.between(*year_range)]
+        df_ = df_[df_.openai_category == category]
+
+        n_papers = df_.shape[0]
         selected_paper_index = st.number_input(
             f"Choose a paper (0-{n_papers-1}):",
             min_value=0,
@@ -62,11 +69,9 @@ def main():
         )
 
     # Right side: Display paper information
-    selected_paper = df_[df_.openai_category == category].iloc[
-        selected_paper_index
-    ]
-
-    st.markdown(f"# {selected_paper['title']}")  # Paper title as an h1
+    selected_paper = df_.iloc[selected_paper_index]
+    clean_title = selected_paper["title"].replace("\n", " ")
+    st.markdown(f"# {clean_title}")  # Paper title as an h1
     st.write(
         f"Number of Citations: {protected_round(selected_paper['ss_cited_by_count'])}"
     )
@@ -83,6 +88,12 @@ def main():
     st.write(
         f"Neuro journals cited (Semantic Scholar): {selected_paper['ss_cited_journals']}"
     )
+    oa_url = (
+        "https://api.openalex.org/works/" + selected_paper["id"].split("/")[-1]
+    )
+    st.write(f"OAID: {oa_url}")
+    ss_url = "https://www.semanticscholar.org/paper/" + selected_paper["ssid"]
+    st.write(f"SSID: {ss_url}")
 
 
 if __name__ == "__main__":

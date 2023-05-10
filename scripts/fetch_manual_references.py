@@ -266,7 +266,6 @@ references_2 = """Title,Link,Category
 "Pyramidal Neuron as Two-Layer Neural Network",https://www.sciencedirect.com/science/article/pii/S0896627303001491,"Artificial & biological neurons"
 "Deep learning in spiking neural networks",https://www.sciencedirect.com/science/article/pii/S0893608018303332,"Spiking neural networks"
 "A critique of pure learning and what artificial neural networks can learn from animal brains",https://www.nature.com/articles/s41467-019-11786-6,"Nature & nurture"
-"The Self-Assembling Brain: How Neural Networks Grow Smarter",https://press.princeton.edu/books/hardcover/9780691181226/the-self-assembling-brain,"Nature & nurture"
 "Innateness, AlphaZero, and Artificial Intelligence",http://arxiv.org/abs/1801.05667,"Nature & nurture"
 "Deep Reinforcement Learning and Its Neuroscientific Implications",http://www.sciencedirect.com/science/article/pii/S0896627320304682,"Reviews & perspectives"
 "A distributional code for value in dopamine-based reinforcement learning",https://www.nature.com/articles/s41586-019-1924-6,"Reviews & perspectives"

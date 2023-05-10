@@ -62,7 +62,8 @@ def main():
     df_ss["ss_cited_by_count"] = df_ss["result"].map(
         lambda x: x["citationCount"]
     )
-    df_ss = df_ss[["id", "ss_cited_by_count"]]
+    df_ss["ssid"] = df_ss["result"].map(lambda x: x["paperId"])
+    df_ss = df_ss[["id", "ss_cited_by_count", "ssid"]]
 
     # Do a left join on the paper ID
     df = df.merge(df_ss, left_on="id", right_on="id", how="left")
@@ -87,17 +88,17 @@ def main():
     keywords = df["keywords_found"].values >= 1
     manual = df["origin"] == "manual"
     df["reason"] = np.where(
-        cites & keywords,
-        "Matched 1+ abstract keywords & cited 2+ neuro papers",
+        manual,
+        "Manually added",
         np.where(
-            keywords,
-            "Matched 1+ abstract keywords",
+            cites & keywords,
+            "Matched 1+ abstract keywords & cited 2+ neuro papers",
             np.where(
-                cites,
-                "Cited 2+ neuro papers",
+                keywords,
+                "Matched 1+ abstract keywords",
                 np.where(
-                    manual,
-                    "Manually added",
+                    cites,
+                    "Cited 2+ neuro papers",
                     "Other",
                 ),
             ),
@@ -111,6 +112,7 @@ def main():
     df = df[
         [
             "id",
+            "ssid",
             "title",
             "publication_year",
             "journal",

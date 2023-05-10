@@ -1,9 +1,11 @@
 import json
 import shutil
 
+import Levenshtein
 import pandas as pd
 import pyalex
 import tqdm
+from collections_extended import bag
 from pyalex import Sources, Works
 
 # Polite pool.
@@ -47,6 +49,19 @@ def fetch_abstracts_by_title(titles):
             continue
 
         work = works[0]
+
+        distance = Levenshtein.distance(work["title"].lower(), title.lower())
+        if distance >= 5:
+            # Try as a bag
+            bag_query = bag(title.lower())
+            bag_result = bag(work["title"].lower())
+
+            if not (
+                len(bag_query & bag_result)
+                > 0.95 * min(len(bag_query), len(bag_result))
+            ):
+                continue
+
         if work["id"] in encountered:
             continue
         if work.get("abstract_inverted_index"):
