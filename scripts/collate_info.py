@@ -1,9 +1,6 @@
 import numpy as np
 import pandas as pd
-from sentence_transformers import SentenceTransformer
-from sklearn.manifold import MDS, TSNE
 from transformers import pipeline
-from umap import UMAP
 
 
 def authorships_to_string(authorships):
@@ -49,56 +46,6 @@ def highlight_abstracts(df):
             # No answer found.
             highlighted.append(abstract)
     df["abstract_highlighted"] = highlighted
-    return df
-
-
-def calculate_2d_embeddings(df: pd.DataFrame, perplexity=5, random_state=42):
-    """This function plots the t-SNE embeddings of the long text.
-    Args:
-        df (pd.DataFrame): The dataframe containing the text.
-        perplexity (int): The perplexity to use for the t-SNE. Defaults to
-        5.
-        random_state (int): The random state to use for the t-SNE.
-        Defaults to 42.
-    Returns:
-        fig (matplotlib.pyplot.figure): The figure of the t-SNE plot.
-    """
-
-    # Start by calculating embeddings
-    papers = (df.title.fillna("") + "\n" + df.abstract.fillna("")).values
-    model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
-    embeddings = model.encode(papers, show_progress_bar=True)
-
-    # Create a t-SNE model and transform the data
-    model = TSNE(
-        n_components=2,
-        perplexity=perplexity,
-        random_state=random_state,
-        init="random",
-        learning_rate=200,
-    )
-    vis_dims = model.fit_transform(embeddings)
-    df["tsne_x"] = vis_dims[:, 0]
-    df["tsne_y"] = vis_dims[:, 1]
-
-    # Create a MDS model and transform the data
-    model = MDS(
-        n_components=2,
-        random_state=random_state,
-    )
-    vis_dims = model.fit_transform(embeddings)
-    df["mds_x"] = vis_dims[:, 0]
-    df["mds_y"] = vis_dims[:, 1]
-
-    # Create a MDS model and transform the data
-    model = UMAP(
-        n_components=2,
-        random_state=random_state,
-    )
-    vis_dims = model.fit_transform(embeddings)
-    df["umap_x"] = vis_dims[:, 0]
-    df["umap_y"] = vis_dims[:, 1]
-
     return df
 
 
@@ -148,7 +95,6 @@ def main():
     df_class = pd.read_json("data/processed/categories.jsonl", lines=True)
     df = df.merge(df_class, on="id")
 
-    df = df[~df["openai_category"].isna()]
     cites = (df["oa_neuro_citations"].values >= 2) | (
         df["ss_neuro_citations"].values >= 2
     )
@@ -172,10 +118,13 @@ def main():
         ),
     )
 
+    df_all = df.copy()
+
+    df = df[~df["openai_category"].isna()]
+
     assert df.shape[0] < 10000, "Too many papers!"
 
     df = highlight_abstracts(df)
-    df = calculate_2d_embeddings(df)
 
     df = df[
         [
@@ -195,12 +144,6 @@ def main():
             "oa_cited_journals",
             "ss_cited_journals",
             "reason",
-            "tsne_x",
-            "tsne_y",
-            "mds_x",
-            "mds_y",
-            "umap_x",
-            "umap_y",
         ]
     ]
 
@@ -209,7 +152,26 @@ def main():
     # Save the final dataframe
     df.to_csv("data/processed/neuroai-works.csv", index=False)
 
+    df_all = df_all[~df_all.id.duplicated()]
+    df_all = df_all[
+        [
+            "id",
+            "ssid",
+            "title",
+            "publication_year",
+            "journal",
+            "link",
+            "author_list",
+            "cited_by_count",
+            "openai_category",
+            "ss_cited_by_count",
+            "oa_cited_journals",
+            "ss_cited_journals",
+            "reason",
+        ]
+    ]
+    df_all.to_csv("data/processed/all-works.csv", index=False)
+
 
 if __name__ == "__main__":
-    main()
     main()
