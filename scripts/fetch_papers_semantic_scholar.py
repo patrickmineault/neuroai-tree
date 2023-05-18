@@ -3,70 +3,11 @@ import pickle
 
 import Levenshtein
 import pandas as pd
-import semanticscholar
 import tqdm
 from collections_extended import bag
 from semanticscholar import SemanticScholar
 
-
-def chunk_iterator(lst, chunk_size=100):
-    """Generator function to iterate through a list in chunks."""
-    for i in range(0, len(lst), chunk_size):
-        yield lst[i : i + chunk_size]
-
-
-fields = [
-    "title",
-    "venue",
-    "citationCount",
-    "fieldsOfStudy",
-    "s2FieldsOfStudy",
-    "references",
-    "references.abstract",
-    "references.externalIds",
-    "references.title",
-    "references.venue",
-    "references.publicationVenue",
-    "references.journal",
-    "references.year",
-    "references.publicationDate",
-    "references.fieldsOfStudy",
-    "references.s2FieldsOfStudy",
-    "embedding",
-]
-
-
-def fetch_semantic_scholar_by_ids(ids):
-    sch = SemanticScholar()
-    ids = {k: v for k, v in ids.items() if v is not None}
-    all_results = []
-    for i, sub_list in tqdm.tqdm(
-        enumerate(chunk_iterator(list(ids.values()))),
-        total=int(len(ids) / 100),
-    ):
-        try:
-            all_results += sch.get_papers(sub_list, fields=fields)
-        except TypeError:
-            n_success = 0
-            for p in sub_list:
-                # Sometimes the thing stalls, in which case we can do it one
-                # paper at a time.
-                try:
-                    all_results += sch.get_papers([p], fields=fields)
-                    n_success += 1
-                except (
-                    semanticscholar.SemanticScholarException.BadQueryParametersException
-                ):
-                    all_results.append(None)
-            print(n_success)
-
-    assert len(all_results) == len(
-        ids
-    ), f"Length mismatch, {len(all_results)} != {len(ids)}"
-    return [
-        {"id": k, "result": dict(r)}
-        for k, r in zip(list(ids.keys()), all_results)
-    ]
+from src.semantic_scholar_batch_fetch import fetch_semantic_scholar_by_ids
 
 
 def fetch_semantic_scholar_by_title(title):
@@ -131,7 +72,7 @@ def resolve_semantic_scholar_ids(df):
                 row["title"].replace("\n", " ")
             )
             paper_ids[row["id"]] = paper_id
-        except Exception as e:
+        except Exception:
             paper_ids[row["id"]] = None
 
         with open("data/processed/ids.pkl", "wb") as f:
@@ -144,11 +85,9 @@ def main():
     df = pd.read_json("data/processed/works.jsonl", lines=True)
     ids = resolve_semantic_scholar_ids(df)
 
-    results = fetch_semantic_scholar_by_ids(ids)
-    with open("data/processed/semantic_scholar.jsonl", "w") as f:
-        for result in results:
-            json.dump(result, f)
-            f.write("\n")
+    f = open("data/processed/semantic_scholar.jsonl", "w")
+    fetch_semantic_scholar_by_ids(ids, "bi", f)
+    f.close()
 
 
 if __name__ == "__main__":
