@@ -1,4 +1,4 @@
-.PHONY: run_paper_browser
+.PHONY: run_paper_browser run_umap
 
 all: data/processed/neuroai-works.csv
 
@@ -25,3 +25,6 @@ data/processed/neuroai-works.csv: data/processed/works.jsonl data/processed/sema
 
 run_paper_browser: 
 	streamlit run scripts/paper_browser.py
+
+run_umap: 
+	streamlit run scripts/paper_umap.py

@@ -8,3 +8,6 @@ src/__pycache__
 *.pkl
 *.jsonl
 .vscode/settings.json
+data/processed/cd-index.*
+data/processed/citation-references.csv
+data/processed/high_citation_medicine.csv
