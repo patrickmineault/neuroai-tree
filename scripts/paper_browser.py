@@ -3,6 +3,40 @@ import pandas as pd
 import streamlit as st
 
 
+def clean(text):
+    if isinstance(text, float):
+        return "N/A"
+    return text
+
+
+def write_details(selected_paper, categories):
+    clean_title = selected_paper["title"].replace("\n", " ")
+    st.markdown(f"# {clean_title}")  # Paper title as an h1
+    st.write(f"Category: {categories[selected_paper['openai_category']]}")
+    st.write(
+        f"Number of Citations: {protected_round(selected_paper['ss_cited_by_count'])}"
+    )
+    st.write(f"Included because: {selected_paper['reason']}")
+    st.write(f"Publication Year: {selected_paper['publication_year']}")
+    st.write(f"Author List: {selected_paper['author_list']}")
+    st.write(f"Journal: {selected_paper['journal']}")
+    st.write(f"Link: {selected_paper['link']}")
+    abstract_highlighted = selected_paper["abstract_highlighted"]
+    st.markdown(f"Abstract: {abstract_highlighted}")
+    st.write(
+        f"Neuro journals cited (OpenAlex): {clean(selected_paper['oa_cited_journals'])}"
+    )
+    st.write(
+        f"Neuro journals cited (Semantic Scholar): {clean(selected_paper['ss_cited_journals'])}"
+    )
+    oa_url = (
+        "https://api.openalex.org/works/" + selected_paper["id"].split("/")[-1]
+    )
+    st.write(f"OAID: {oa_url}")
+    ss_url = "https://www.semanticscholar.org/paper/" + selected_paper["ssid"]
+    st.write(f"SSID: {ss_url}")
+
+
 # Load your pandas file with the paper information
 def load_data():
     df = pd.read_csv("data/processed/neuroai-works.csv")
@@ -21,6 +55,8 @@ categories = {
     "C": "AI compared to neuro",
     "D": "General AI, some neuro",
     "E": "Not neuro related",
+    "F": "Not classified",
+    "*": "All",
 }
 
 
@@ -40,7 +76,7 @@ def main():
 
         category = st.selectbox(
             "Category",
-            ["A", "C", "B", "D", "E"],
+            ["A", "C", "B", "D", "E", "*"],
             format_func=lambda x: categories[x],
         )
         text_filter = st.text_input("Text search")
@@ -48,7 +84,9 @@ def main():
         if text_filter:
             df_ = df[
                 df.title.str.contains(text_filter, case=False)
-                | df.author_list.str.contains(text_filter, case=False)
+                | df.author_list_unabridged.str.contains(
+                    text_filter, case=False
+                )
                 | df.abstract.str.contains(text_filter, case=False)
             ]
         else:
@@ -59,7 +97,8 @@ def main():
         )
 
         df_ = df_[df_.publication_year.between(*year_range)]
-        df_ = df_[df_.openai_category == category]
+        if category != "*":
+            df_ = df_[df_.openai_category == category]
 
         n_papers = df_.shape[0]
         selected_paper_index = st.number_input(
@@ -68,33 +107,11 @@ def main():
             max_value=n_papers - 1,
         )
 
-    # Right side: Display paper information
     selected_paper = df_.iloc[selected_paper_index]
-    clean_title = selected_paper["title"].replace("\n", " ")
-    st.markdown(f"# {clean_title}")  # Paper title as an h1
-    st.write(
-        f"Number of Citations: {protected_round(selected_paper['ss_cited_by_count'])}"
-    )
-    st.write(f"Included because: {selected_paper['reason']}")
-    st.write(f"Publication Year: {selected_paper['publication_year']}")
-    st.write(f"Author List: {selected_paper['author_list']}")
-    st.write(f"Journal: {selected_paper['journal']}")
-    st.write(f"Link: {selected_paper['link']}")
-    abstract_highlighted = selected_paper["abstract_highlighted"]
-    st.markdown(f"Abstract: {abstract_highlighted}")
-    st.write(
-        f"Neuro journals cited (OpenAlex): {selected_paper['oa_cited_journals']}"
-    )
-    st.write(
-        f"Neuro journals cited (Semantic Scholar): {selected_paper['ss_cited_journals']}"
-    )
-    oa_url = (
-        "https://api.openalex.org/works/" + selected_paper["id"].split("/")[-1]
-    )
-    st.write(f"OAID: {oa_url}")
-    ss_url = "https://www.semanticscholar.org/paper/" + selected_paper["ssid"]
-    st.write(f"SSID: {ss_url}")
+
+    write_details(selected_paper, categories)
 
 
 if __name__ == "__main__":
+    main()
     main()

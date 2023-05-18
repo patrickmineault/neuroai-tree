@@ -1,12 +1,20 @@
 import numpy as np
 import pandas as pd
+from sentence_transformers import SentenceTransformer
+from sklearn.manifold import MDS, TSNE
 from transformers import pipeline
+from umap import UMAP
 
 
 def authorships_to_string(authorships):
     names = [a["author"].get("display_name", "") for a in authorships]
     if len(names) > 5:
         return ", ".join(names[:5]) + ", et al."
+    return ", ".join(names)
+
+
+def authorships_to_string_unabridged(authorships):
+    names = [a["author"].get("display_name", "") for a in authorships]
     return ", ".join(names)
 
 
@@ -44,6 +52,56 @@ def highlight_abstracts(df):
     return df
 
 
+def calculate_2d_embeddings(df: pd.DataFrame, perplexity=5, random_state=42):
+    """This function plots the t-SNE embeddings of the long text.
+    Args:
+        df (pd.DataFrame): The dataframe containing the text.
+        perplexity (int): The perplexity to use for the t-SNE. Defaults to
+        5.
+        random_state (int): The random state to use for the t-SNE.
+        Defaults to 42.
+    Returns:
+        fig (matplotlib.pyplot.figure): The figure of the t-SNE plot.
+    """
+
+    # Start by calculating embeddings
+    papers = (df.title.fillna("") + "\n" + df.abstract.fillna("")).values
+    model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+    embeddings = model.encode(papers, show_progress_bar=True)
+
+    # Create a t-SNE model and transform the data
+    model = TSNE(
+        n_components=2,
+        perplexity=perplexity,
+        random_state=random_state,
+        init="random",
+        learning_rate=200,
+    )
+    vis_dims = model.fit_transform(embeddings)
+    df["tsne_x"] = vis_dims[:, 0]
+    df["tsne_y"] = vis_dims[:, 1]
+
+    # Create a MDS model and transform the data
+    model = MDS(
+        n_components=2,
+        random_state=random_state,
+    )
+    vis_dims = model.fit_transform(embeddings)
+    df["mds_x"] = vis_dims[:, 0]
+    df["mds_y"] = vis_dims[:, 1]
+
+    # Create a MDS model and transform the data
+    model = UMAP(
+        n_components=2,
+        random_state=random_state,
+    )
+    vis_dims = model.fit_transform(embeddings)
+    df["umap_x"] = vis_dims[:, 0]
+    df["umap_y"] = vis_dims[:, 1]
+
+    return df
+
+
 def get_journal_name(x):
     if (
         "source" in x
@@ -67,7 +125,16 @@ def main():
 
     # Do a left join on the paper ID
     df = df.merge(df_ss, left_on="id", right_on="id", how="left")
+
+    # Drop bad rows
+    df = df[~df["id"].duplicated()]
+    df = df[~df["ssid"].duplicated()]
+    df = df[df.title != "Title"]
+
     df["author_list"] = df.authorships.map(authorships_to_string)
+    df["author_list_unabridged"] = df.authorships.map(
+        authorships_to_string_unabridged
+    )
     df["journal"] = df.primary_location.map(lambda x: get_journal_name(x))
     df["link"] = df["primary_location"].map(lambda x: x["landing_page_url"])
 
@@ -108,6 +175,7 @@ def main():
     assert df.shape[0] < 10000, "Too many papers!"
 
     df = highlight_abstracts(df)
+    df = calculate_2d_embeddings(df)
 
     df = df[
         [
@@ -118,6 +186,7 @@ def main():
             "journal",
             "link",
             "author_list",
+            "author_list_unabridged",
             "cited_by_count",
             "openai_category",
             "abstract",
@@ -126,6 +195,12 @@ def main():
             "oa_cited_journals",
             "ss_cited_journals",
             "reason",
+            "tsne_x",
+            "tsne_y",
+            "mds_x",
+            "mds_y",
+            "umap_x",
+            "umap_y",
         ]
     ]
 
@@ -136,4 +211,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()
